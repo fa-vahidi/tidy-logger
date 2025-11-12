@@ -1,0 +1,7 @@
+name: logger
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - pytest
+  - pytest-mock
