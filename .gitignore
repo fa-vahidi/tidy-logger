@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# WSL:
+#  Ignore the Alternate data streams (ADS) used by the NTFS file system to store additional metadata about a file
+*Zone.Identifier
