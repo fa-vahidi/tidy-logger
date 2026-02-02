@@ -1,0 +1,177 @@
+name: Build Python Package and Publish Package Distributions to TestPyPI and PyPI
+
+on:
+  push:
+    # Sequence of patterns matched against refs/heads
+    branches:
+      - main
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - v*.*.*
+
+jobs:
+
+  dump_github_context:
+    name: Dump GitHub Context
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Dump 'github' Context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          echo "'github' context:"
+          echo "$GITHUB_CONTEXT"
+
+      - name: Dump 'github.event' Context
+        env:
+          GITHUB_EVENT_CONTEXT: ${{ toJson(github.event) }}
+        run: |
+          echo "'github.event' context:"
+          echo "$GITHUB_EVENT_CONTEXT"
+
+      - name: Dump 'github.event.workflow_run' Context
+        env:
+          GITHUB_EVENT_WFR_CONTEXT: ${{ toJson(github.event.workflow_run) }}
+        run: |
+          echo "'github.event.workflow_run' context:"
+          echo "$GITHUB_EVENT_WFR_CONTEXT"
+
+
+  build-package-distributions:
+    name: Build Package Distributions with Poetry
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Dump 'runner.os' Value
+        env:
+          RUNNER_OS: ${{ runner.os }}
+        run: |
+          echo "'runner.os' value: $RUNNER_OS"
+
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
+          ref: ${{ github.event.workflow_run.head_sha || github.event.workflow_run.head_branch || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Set Up Python
+        id: set-up-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$(poetry --version) has been installed."
+          echo ""
+          echo "Content of GITHUB_PATH file at $GITHUB_PATH:"
+          cat $GITHUB_PATH
+
+      - name: Configure Poetry Virtualv Environment Location
+        run: poetry config virtualenvs.in-project true
+
+      - name: Retrieve Poetry Directories
+        id: poetry-directories
+        run: |
+          echo "cache_dir=$(poetry config cache-dir)" >> $GITHUB_OUTPUT
+          echo "Poetry 'cache_dir':        $(poetry config cache-dir)"
+          echo "data_dir=$(poetry config data-dir)" >> $GITHUB_OUTPUT
+          echo "Poetry 'data_dir':         $(poetry config cache-dir)"
+          echo "virtual_envs_dir=$(poetry config virtualenvs.path)" >> $GITHUB_OUTPUT
+          echo "Poetry 'virtualenvs.path': $(poetry config virtualenvs.path)"
+          echo ""
+          echo "Content of GITHUB_OUTPUT file at $GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
+
+      - name: Cache Poetry Packages
+        id: cache-poetry-packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.poetry-directories.outputs.cache_dir }}
+            ${{ steps.poetry-directories.outputs.data_dir }}
+            ${{ steps.poetry-directories.outputs.virtual_envs_dir }}
+          key: pypoetry-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pypoetry-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-
+            pypoetry-packages-${{ runner.os }}-python-
+
+      - name: List Poetry Configuration
+        run: |
+          poetry config --list
+
+      - name: Build Package Distributions Using Poetry
+        run: |
+          poetry build
+
+      - name: Dump 'dist' Directory's Content
+        run: |
+          ls -la dist/
+
+      - name: Store Package Distributions
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-package-distributions
+          path: dist/
+
+
+  publish-to-testpypi:
+    name: Publish Package Distributions to TestPyPI
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-package-distributions
+    runs-on: ubuntu-latest
+    environment:
+      name: publish-to-TestPyPI
+      url: https://test.pypi.org/p/tidy_logger  # Replace <package-name> in https://test.pypi.org/p/<package-name> with your TestPyPI project name
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+
+      - name: Download Stored Package Distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Dump 'dist' Directory Content
+        run: |
+          ls -la dist/
+
+      - name: Publish Package Distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+
+  publish-to-pypi:
+    name: Publish Package Distributions to PyPI
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-package-distributions
+    runs-on: ubuntu-latest
+    environment:
+      name: publish-to-PyPI
+      url: https://pypi.org/p/tidy_logger  # Replace <package-name> in https://pypi.org/p/<package-name> with your PyPI project name
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+    steps:
+
+      - name: Download Stored Package Distributions
+        uses: actions/download-artifact@v7
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Dump 'dist' Directory Content
+        run: |
+          ls -la dist/
+
+      - name: Publish Package Distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
