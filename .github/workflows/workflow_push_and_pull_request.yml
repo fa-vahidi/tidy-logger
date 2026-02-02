@@ -1,0 +1,383 @@
+name: Workflow on Push and Pull Request
+
+on: [push, pull_request]
+
+jobs:
+
+  dump_github_context:
+    name: Dump GitHub Context
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Dump 'github' context
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          echo "'github' context:"
+          echo "$GITHUB_CONTEXT"
+
+      - name: Dump 'github.event' context
+        env:
+          GITHUB_EVENT_CONTEXT: ${{ toJson(github.event) }}
+        run: |
+          echo "'github.event' context:"
+          echo "$GITHUB_EVENT_CONTEXT"
+
+      - name: Dump 'github.event.workflow_run' context
+        env:
+          GITHUB_EVENT_WFR_CONTEXT: ${{ toJson(github.event.workflow_run) }}
+        run: |
+          echo "'github.event.workflow_run' context:"
+          echo "$GITHUB_EVENT_WFR_CONTEXT"
+
+
+  check_code_style:
+    name: Check Code Style
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    outputs:
+      latest_python_version: ${{ steps.set-up-python.outputs.python-version }}
+    steps:
+
+      - &checkout_code
+        name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
+          ref: ${{ github.event.workflow_run.head_sha || github.event.workflow_run.head_branch || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set Up Python
+        id: set-up-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Install Tools
+        run: |
+          pip install isort black flake8 yamllint
+
+      - name: Run isort
+        run: |
+          FILES=$(find . -name "*.py")
+          if [ -z "$FILES" ]; then
+            echo "::warning title=isort::No Python files found for isort."
+          else
+            find . -name "*.py" -print0 | xargs -0 isort --line-length=180 --profile=black
+          fi
+
+      - name: Run black
+        run: |
+          FILES=$(find . -name "*.py")
+          if [ -z "$FILES" ]; then
+            echo "::warning title=black::No Python files found for black."
+          else
+            find . -name "*.py" -print0 | xargs -0 black --line-length=180
+          fi
+
+      - name: Run flake8
+        run: |
+          FILES=$(find . -name "*.py")
+          if [ -z "$FILES" ]; then
+            echo "::warning title=flake8::No Python files found for flake8."
+          else
+            find . -name "*.py" -print0 | xargs -0 flake8 --ignore=E265,E266,E501,E731,F401,W503,W504
+          fi
+
+      - name: Run yamllint
+        run: |
+          FILES=$(find . -type f \( -name "*.yml" -o -name "*.yaml" \))
+          if [ -z "$FILES" ]; then
+            echo "::warning title=yamllint::No YAML files found for yamllint."
+          else
+            find . -type f \( -name "*.yml" -o -name "*.yaml" \) -print0 \
+            | xargs -0 yamllint -d "{extends: relaxed, rules: {line-length: {max: 180}}}"
+          fi
+
+
+  check_tests_directory:
+    name: Check 'tests' Directory
+    if: github.ref_type == 'branch'
+    needs: check_code_style
+    runs-on: ubuntu-latest
+    outputs:
+      tests_exists: ${{ steps.check-tests-directory.outputs.tests_exists }}
+    steps:
+
+      - *checkout_code
+
+      - name: Check Whether 'tests' Directory Exists
+        id: check-tests-directory
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Directory content:"
+          ls -la
+          if [ -d "./tests" ]; then
+            echo "tests_exists=true" >> $GITHUB_OUTPUT
+            echo "::notice title=Check 'tests' directory::'tests' directory exists."
+          else
+            echo "tests_exists=false" >> $GITHUB_OUTPUT
+            echo "::warning title=Check 'tests' directory::'tests' directory does not exist."
+            echo "::warning title=Check 'tests' directory::Python tests will not be executed!"
+          fi
+          echo ""
+          echo "Content of GITHUB_OUTPUT file at $GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
+
+
+  test_python_no_env:
+    name: Test Python Code on Operating System
+    needs: [check_code_style, check_tests_directory]
+    if: ${{ needs.check_tests_directory.outputs.tests_exists == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.x']
+      fail-fast: false  # Continue testing other platforms even if one fails
+    steps:
+
+      - *checkout_code
+
+      - name: Set Up Python ${{ matrix.python-version }}
+        id: set-up-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Retrieve pip Cache Directory
+        id: pip-cache-directory
+        shell: bash
+        run: |
+          echo "pip_cache_dir=$(pip cache dir)" >> $GITHUB_OUTPUT
+          echo "pip Cache Directory: $(pip cache dir)"
+          echo ""
+          echo "Content of GITHUB_OUTPUT file at $GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
+
+      - name: Cache pip Packages
+        id: cache-pip-packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pip-cache-directory.outputs.pip_cache_dir }}
+          key: pip-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-
+            pip-packages-${{ runner.os }}-python-
+
+      - name: Install Dependencies (Without Virtual Environment)
+        shell: bash
+        run: |
+          pip install -r ./requirements.txt
+
+      - name: Run Python Tests
+        shell: bash
+        run: |
+          pytest tests/
+
+
+  test_python_poetry:
+    name: Test Python Code Using Poetry Virtual Environment
+    needs: [check_code_style, check_tests_directory]
+    if: ${{ needs.check_tests_directory.outputs.tests_exists == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest] # Poetry plugins have problem on Windows runners (Project uses poetry-dynamic-versioning plugin)
+        python-version: ['3.x']
+      fail-fast: false  # Continue testing other platforms even if one fails
+    steps:
+
+      - *checkout_code
+
+      - name: Set Up Python ${{ matrix.python-version }}
+        id: set-up-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        shell: bash
+        run: |
+          echo "Runner OS: $RUNNER_OS"
+
+          curl -sSL https://install.python-poetry.org | python3 -
+
+          case $RUNNER_OS in
+            Linux | macOS)
+              echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+              ;;
+            Windows)
+              echo "$APPDATA\\Python\\Scripts" >> "$GITHUB_PATH"
+              ;;
+            *)
+              echo "Unknown Runner OS: $RUNNER_OS"
+              exit 1
+              ;;
+          esac
+
+          echo "$(poetry --version) has been installed."
+          echo ""
+          echo "Content of GITHUB_PATH file at $GITHUB_PATH:"
+          cat $GITHUB_PATH
+
+      - name: Configure Poetry Virtualv Environment Location
+        run: poetry config virtualenvs.in-project true
+
+      - name: Retrieve Poetry Directories
+        id: poetry-directories
+        shell: bash
+        run: |
+          echo "cache_dir=$(poetry config cache-dir)" >> $GITHUB_OUTPUT
+          echo "Poetry 'cache-dir':        $(poetry config cache-dir)"
+          echo "data_dir=$(poetry config data-dir)" >> $GITHUB_OUTPUT
+          echo "Poetry 'data-dir':         $(poetry config cache-dir)"
+          echo "virtual_envs_dir=$(poetry config virtualenvs.path)" >> $GITHUB_OUTPUT
+          echo "Poetry 'virtualenvs.path': $(poetry config virtualenvs.path)"
+          echo ""
+          echo "Content of GITHUB_OUTPUT file at $GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
+
+      - name: Cache Poetry Packages
+        id: cache-poetry-packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.poetry-directories.outputs.cache_dir }}
+            ${{ steps.poetry-directories.outputs.data_dir }}
+            ${{ steps.poetry-directories.outputs.virtual_envs_dir }}
+          key: pypoetry-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pypoetry-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-
+            pypoetry-packages-${{ runner.os }}-python-
+
+      - name: List the Poetry Configuration
+        shell: bash
+        run: |
+          poetry config --list
+
+      - name: Install Dependencies Using Poetry
+        shell: bash
+        run: |
+          poetry install --no-root
+          poetry env info
+
+      - name: Run Python Tests Inside the Poetry Environment
+        shell: bash
+        run: |
+          poetry run pytest tests/
+
+
+  test_python_conda:
+    name: Test Python Code Using conda Virtual Environment
+    needs: [check_code_style, check_tests_directory]
+    if: ${{ needs.check_tests_directory.outputs.tests_exists == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false  # Continue testing other platforms even if one fails
+    steps:
+
+      - *checkout_code
+
+      - name: Set Up conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: logger
+          auto-activate: false
+          auto-update-conda: true
+          channels: conda-forge # According to environment.yml file
+          conda-remove-defaults: "true" # According to environment.yml file
+          miniconda-version: "latest"
+          # "conda-incubator/setup-miniconda" does not understand "3.x", so the latest python version is retrieved from the "check_code_style" job
+          python-version: ${{ needs.check_code_style.outputs.latest_python_version }}
+
+      - name: Retrieve conda Directories
+        id: conda-directories
+        if: ${{ runner.os != 'Windows' }}
+        shell: bash
+        run: |
+          info=$(conda info --json)
+          {
+            echo "pkgs_dirs<<EOF"
+            echo "$info" | python -c "import sys,json; print('\n'.join(json.load(sys.stdin)['pkgs_dirs']))"
+            echo "EOF"
+            echo "envs_dirs<<EOF"
+            echo "$info" | python -c "import sys,json; print('\n'.join(json.load(sys.stdin)['envs_dirs']))"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+          #echo "pkgs_dirs=$(echo "$info" | python -c "import sys,json; print('\n'.join(json.load(sys.stdin)['pkgs_dirs']))")" >> $GITHUB_OUTPUT
+          #echo "envs_dirs=$(echo "$info" | python -c "import sys,json; print('\n'.join(json.load(sys.stdin)['envs_dirs']))")" >> $GITHUB_OUTPUT
+          echo ""
+          echo "Content of GITHUB_OUTPUT file at $GITHUB_OUTPUT:"
+          cat $GITHUB_OUTPUT
+
+      - name: Retrieve conda Directories on Windows
+        id: conda-directories-on-windows
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          # Save conda info
+          conda info --json | Out-File info.json -Encoding utf8
+          # Create Python script to write outputs
+          $script = @"
+          import json, os
+          info = json.load(open("info.json"))
+          out = os.environ["GITHUB_OUTPUT"]
+          def write(name, values):
+              with open(out, "a") as f:
+                  f.write(f"{name}<<EOF\n")
+                  f.write("\n".join(values) + "\nEOF\n")
+          write("pkgs_dirs", info["pkgs_dirs"])
+          write("envs_dirs", info["envs_dirs"])
+          "@
+          $script | Out-File script.py -Encoding utf8
+          # Run Python
+          python script.py
+          Write-Host ""
+          Write-Host "Content of GITHUB_OUTPUT file at $env:GITHUB_OUTPUT:"
+          Get-Content $env:GITHUB_OUTPUT
+
+      - name: Check conda Einvironment Parameter
+        shell: bash
+        run: |
+          echo "conda path: $CONDA"
+
+      - name: Cache conda Packages
+        id: cache-conda-packages
+        if: ${{ runner.os != 'Windows' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.conda-directories.outputs.pkgs_dirs }}
+            ${{ steps.conda-directories.outputs.envs_dirs }}
+          key: conda-packages-${{ runner.os }}-python-${{ needs.check_code_style.outputs.latest_python_version }}-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            conda-packages-${{ runner.os }}-python-${{ needs.check_code_style.outputs.latest_python_version }}-
+            conda-packages-${{ runner.os }}-python-
+
+      - name: Cache conda Packages on Windows
+        id: cache-conda-packages-on-windows
+        if: ${{ runner.os == 'Windows' }}
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.conda-directories-on-windows.outputs.pkgs_dirs }}
+            ${{ steps.conda-directories-on-windows.outputs.envs_dirs }}
+          key: conda-packages-${{ runner.os }}-python-${{ needs.check_code_style.outputs.latest_python_version }}-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            conda-packages-${{ runner.os }}-python-${{ needs.check_code_style.outputs.latest_python_version }}-
+            conda-packages-${{ runner.os }}-python-
+
+      - name: Set Up conda Environment and Run Python Tests
+        shell: bash
+        run: |
+          source "$CONDA/etc/profile.d/conda.sh"
+          conda info
+          conda env list
+          conda activate logger
+          conda env update -f ./environment.yml
+          pytest tests/
