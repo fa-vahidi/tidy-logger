@@ -1,0 +1,49 @@
+[project]
+name = "tidy_logger"
+dynamic = [ "version", "classifiers" ]
+description = "A Python logging utility that generates indented log messages with color-coding for different log levels on the console, and also supports logging to files for better tracking and debugging."
+keywords = [ "logging", "indented", "colored", "coloured" ]
+authors = [
+  { name="fa-vahidi", email="43846305+fa-vahidi@users.noreply.github.com" },
+]
+maintainers = [
+  { name="fa-vahidi", email="43846305+fa-vahidi@users.noreply.github.com" }
+]
+readme = "README.md"
+license = "GPLv3"
+license-files = ["LICEN[CS]E*"]
+requires-python = ">=3.10"
+dependencies = [
+  "platformdirs (>=4.5.1)",
+]
+
+[dependency-groups]
+dev = [
+    "pytest (>=8.3.5)",
+    "pytest-mock (>=3.15.1)",
+]
+
+[project.urls]
+repository  = "https://github.com/fa-vahidi/test-tidy-logger"
+issues = "https://github.com/fa-vahidi/test-tidy-logger/issues"
+
+[tool.poetry]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+]
+version = "0.0.0"  # according to: https://github.com/mtkennerly/poetry-dynamic-versioning
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+style = "pep440"
+#strict = true
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
