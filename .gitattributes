@@ -1,0 +1,40 @@
+# Set the default behavior to automatically normalize line endings.
+* text=auto
+
+# Normalize line endings for Python scripts
+*.py text eol=lf
+
+# Normalize line endings for Jupyter notebooks files
+*.ipynb text eol=lf
+
+# Normalize line endings for text-based files like README, docs, etc.
+*.md text eol=lf
+*.log text eol=lf
+*.rst text eol=lf
+*.txt text eol=lf
+
+# Handle CSV and other text-based data files properly with LF line endings
+*.csv text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Ensure that Python bytecode files are treated as binary (don't perform any transformations on them)
+*.pyc binary
+*.pyo binary
+
+# Ensure binary files like images and archives are not treated as text
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.tar.gz binary
+
+# Treat common binary file formats as binary (avoid diffs on them)
+*.exe binary
+*.dll binary
+*.iso binary
+*.dmg binary
