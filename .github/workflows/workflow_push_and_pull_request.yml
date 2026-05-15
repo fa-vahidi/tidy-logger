@@ -159,7 +159,7 @@ jobs:
 
       - name: Cache pip Packages
         id: cache-pip-packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.pip-cache-directory.outputs.pip_cache_dir }}
           key: pip-packages-${{ runner.os }}-python-${{ steps.set-up-python.outputs.python-version }}-${{ hashFiles('requirements.txt') }}
@@ -242,7 +242,7 @@ jobs:
 
       - name: Cache Poetry Packages
         id: cache-poetry-packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ steps.poetry-directories.outputs.cache_dir }}
@@ -351,7 +351,7 @@ jobs:
       - name: Cache conda Packages
         id: cache-conda-packages
         if: ${{ runner.os != 'Windows' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ steps.conda-directories.outputs.pkgs_dirs }}
@@ -364,7 +364,7 @@ jobs:
       - name: Cache conda Packages on Windows
         id: cache-conda-packages-on-windows
         if: ${{ runner.os == 'Windows' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ steps.conda-directories-on-windows.outputs.pkgs_dirs }}
