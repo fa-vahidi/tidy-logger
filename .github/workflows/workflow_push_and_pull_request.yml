@@ -285,7 +285,7 @@ jobs:
 
       - name: Get Latest conda Python Version
         if: ${{ runner.os != 'Windows' }}
-        id: get_conda_python
+        id: get-conda-python
         shell: bash
         run: |
           LATEST=$(conda search python --channel conda-forge --json \
@@ -297,7 +297,7 @@ jobs:
 
       - name: Get Latest conda Python Version on Windows
         if: ${{ runner.os == 'Windows' }}
-        id: get_conda_python
+        id: get-conda-python-on-windows
         shell: pwsh
         run: |
           $json = conda search python --channel conda-forge --json | ConvertFrom-Json
