@@ -285,12 +285,26 @@ jobs:
 
       - name: Get Latest conda Python Version
         id: get_conda_python_version
-        shell: bash
+        shell: python
         run: |
-          sudo apt-get install -y jq  # only needed on some runners
-          LATEST=$(conda search python --channel conda-forge --json | jq -r '.python[].version' | sort -V | tail -n 1)
-          echo "Latest conda Python version is $LATEST"
-          echo "latest_conda_python_version=$LATEST" >> $GITHUB_OUTPUT
+          import json, subprocess
+          # Run conda search and capture output
+          result = subprocess.run(
+              ["conda", "search", "python", "--channel", "conda-forge", "--json"],
+              capture_output=True, text=True, check=True
+          )
+          data = json.loads(result.stdout)
+          # Extract all versions
+          versions = [pkg['version'] for pkg in data['python']]
+          # Sort versions as tuples of integers (major, minor, patch)
+          def parse_version(v):
+              parts = v.split(".")
+              return tuple(int(p) for p in parts[:3])  # drop build/extra if any
+          latest = max(versions, key=parse_version)
+          print(f"Latest conda Python version is {latest}")
+          # Export for GitHub Actions
+          with open("${{ github.env }}", "a") as f:
+              f.write(f"latest_conda_python_version={latest}\n")
 
       - name: Set Up conda
         uses: conda-incubator/setup-miniconda@v3
