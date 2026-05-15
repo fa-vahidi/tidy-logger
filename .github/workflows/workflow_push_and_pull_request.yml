@@ -283,6 +283,15 @@ jobs:
 
       - *checkout_code
 
+      - name: Get Latest conda Python Version
+        id: get_conda_python_version
+        shell: bash
+        run: |
+          sudo apt-get install -y jq  # only needed on some runners
+          LATEST=$(conda search python --channel conda-forge --json | jq -r '.python[].version' | sort -V | tail -n 1)
+          echo "Latest conda Python version is $LATEST"
+          echo "latest_conda_python_version=$LATEST" >> $GITHUB_OUTPUT
+
       - name: Set Up conda
         uses: conda-incubator/setup-miniconda@v3
         with:
@@ -293,7 +302,8 @@ jobs:
           conda-remove-defaults: "true" # According to environment.yml file
           miniconda-version: "latest"
           # "conda-incubator/setup-miniconda" does not understand "3.x", so the latest python version is retrieved from the "check_code_style" job
-          python-version: ${{ needs.check_code_style.outputs.latest_python_version }}
+          # python-version: ${{ needs.check_code_style.outputs.latest_python_version }}
+          python-version: ${{ steps.get_conda_python_version.outputs.latest_conda_python_version }}
 
       - name: Retrieve conda Directories
         id: conda-directories
