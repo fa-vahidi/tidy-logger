@@ -284,7 +284,7 @@ jobs:
       - *checkout_code
 
       - name: Set Up conda
-        uses: conda-incubator/setup-miniconda@v3
+        uses: conda-incubator/setup-miniconda@v4
         with:
           activate-environment: logger
           auto-activate: false
