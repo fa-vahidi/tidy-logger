@@ -67,6 +67,42 @@ The logs will appear on the console with color-coded log levels, as shown below:
 
 <img src="https://raw.githubusercontent.com/fa-vahidi/tidy-logger/main/assets/tidy_logger_console_output.png" alt="console output" width="672" height="305">
 
+## Logging Exception
+
+Exceptions can be logged as follows:
+
+```python
+import logging
+from tidy_logger import TidyLogger
+
+# Initialize the TidyLogger instance
+logger = TidyLogger()
+
+def some_function():
+    try:
+        try:
+            raise ValueError("This is a test exception.")
+        except Exception as ex:
+            raise RuntimeError("An error occurred while processing.") from ex
+    except Exception as ex:
+        logger.debug_exception(ex, "An error occurred while processing the request.")
+        logger.info_exception(ex, "An error occurred while processing the request.")
+        logger.warning_exception(ex, "An error occurred while processing the request.")
+        logger.error_exception(ex, "An error occurred while processing the request.")
+        logger.critical_exception(ex, "An error occurred while processing the request.")
+
+if __name__ == "__main__":
+    some_function()
+
+```
+
+## Console Output
+
+The logs will appear on the console with color-coded log levels, as shown below:
+
+<img src="https://raw.githubusercontent.com/fa-vahidi/tidy-logger/main/assets/tidy_logger_exception_console_output.png" alt="console exception output" width="672" height="954">
+
+
 ## Options
 
 The environment variable `TIDY_LOGGER_LOG_FILE_DIR` can be set to specify the log file directory if the `log_file_directory` argument is not provided during the initialization of `TidyLogger`. It is recommended to set this environment variable to an absolute path.  
