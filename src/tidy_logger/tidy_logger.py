@@ -1,5 +1,6 @@
 import logging
 import os
+import traceback
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -124,6 +125,86 @@ class TidyLogger:
         """Log a critical message."""
         kwargs.setdefault("stacklevel", 2)
         self.logger.critical(message, *args, **kwargs)
+
+    def debug_exception(self, ex: BaseException, message: str, *args, **kwargs) -> None:
+        """Log a debug message with exception details."""
+        kwargs.setdefault("stacklevel", 2)
+        debug_full_message: str = self._get_full_message(message=message, ex=ex)
+        self.logger.debug(debug_full_message, *args, **kwargs)
+
+    def info_exception(self, ex: BaseException, message: str, *args, **kwargs) -> None:
+        """Log an info message with exception details."""
+        kwargs.setdefault("stacklevel", 2)
+        info_full_message: str = self._get_full_message(message=message, ex=ex)
+        self.logger.info(info_full_message, *args, **kwargs)
+
+    def warning_exception(self, ex: BaseException, message: str, *args, **kwargs) -> None:
+        """Log a warning message with exception details."""
+        kwargs.setdefault("stacklevel", 2)
+        warning_full_message: str = self._get_full_message(message=message, ex=ex)
+        self.logger.warning(warning_full_message, *args, **kwargs)
+
+    def error_exception(self, ex: BaseException, message: str, *args, **kwargs) -> None:
+        """Log an error message with exception details."""
+        kwargs.setdefault("stacklevel", 2)
+        error_full_message: str = self._get_full_message(message=message, ex=ex)
+        self.logger.error(error_full_message, *args, **kwargs)
+
+    def critical_exception(self, ex: BaseException, message: str, *args, **kwargs) -> None:
+        """Log a critical message with exception details."""
+        kwargs.setdefault("stacklevel", 2)
+        critical_full_message: str = self._get_full_message(message=message, ex=ex)
+        self.logger.critical(critical_full_message, *args, **kwargs)
+
+    def _get_full_message(self, message: str, ex: BaseException) -> str:
+        """Construct a full log message including the provided message and exception details."""
+        exception_details = self._log_exception(ex=ex)
+        return f"{message}\n\n{exception_details}"
+
+    def _log_exception(self, ex: BaseException, indentation: str = "    ", level: int = 0, is_inner_exception=False, inner_exception_num: int | None = None) -> str:
+        """Recursively log exception details, including chained exceptions and ExceptionGroup contents, with indentation for readability.
+
+        :param ex: The exception to log.
+        :param indentation: The string to use for indentation (default is 4 spaces).
+        :param level: The current indentation level (used for recursive calls).
+        :param is_inner_exception: Whether the current exception is an inner exception (part of an ExceptionGroup).
+        :param inner_exception_num: The number of the inner exception if it is part of an ExceptionGroup (used for labeling).
+
+        :return: A formatted string containing the exception details.
+        """
+        indent: str = indentation * level
+
+        if is_inner_exception and inner_exception_num is not None:
+            exception_type_header: str = "Exception {}".format(inner_exception_num)
+        else:
+            exception_type_header: str = "Exception"
+
+        message_lines = []
+        message_lines.append("{}– {}".format(indent, "{}: {}".format(exception_type_header, type(ex).__name__)))
+        message_header: str = "Message:".ljust(len(exception_type_header))
+        message_lines.append("{}  {}".format(indent, "{}  {}".format(message_header, str(ex).replace("\n", "\n" + indent + " " * (len(exception_type_header) + 2 + 1)))))
+        traceback_text: str = "".join(traceback.format_tb(ex.__traceback__)).lstrip().rstrip("\n")
+        traceback_header: str = "Traceback:".ljust(len(exception_type_header))
+        message_lines.append("{}  {}".format(indent, "{} {}".format(traceback_header, traceback_text.replace("\n", "\n" + indent + " " * (len(exception_type_header) + 2 + 1)))))
+
+        # Explicit chained exception: raise X from Y
+        if ex.__cause__:
+            message_lines.append("{}  {}".format(indent, "Caused by:"))
+            message_lines.append(self._log_exception(ex=ex.__cause__, indentation=indentation, level=level + 1))
+        # Implicit chained exception
+        elif ex.__context__:
+            message_lines.append("{}  {}".format(indent, "In Context:"))
+            message_lines.append(self._log_exception(ex=ex.__context__, indentation=indentation, level=level + 1))
+
+        # Python 3.11+ ExceptionGroup support
+        if isinstance(ex, ExceptionGroup):
+            num_exceptions: int = len(ex.exceptions)
+            message_lines.append("{}  {}".format(indent, f"Contains {len(ex.exceptions)} exception{"s" if num_exceptions > 1 else ""}:"))
+
+            for i, inner in enumerate(ex.exceptions, start=1):
+                message_lines.append(self._log_exception(ex=inner, indentation=indentation, level=level + 1, is_inner_exception=True, inner_exception_num=i))
+
+        return "\n".join(message_lines)
 
     def close(self) -> None:
         """Close all handlers associated with the logger."""
