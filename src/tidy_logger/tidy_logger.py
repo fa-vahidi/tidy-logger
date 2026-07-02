@@ -199,7 +199,7 @@ class TidyLogger:
         # Python 3.11+ ExceptionGroup support
         if isinstance(ex, ExceptionGroup):
             num_exceptions: int = len(ex.exceptions)
-            message_lines.append("{}  {}".format(indent, f"Contains {len(ex.exceptions)} exception{"s" if num_exceptions > 1 else ""}:"))
+            message_lines.append("{}  {}".format(indent, f"Contains {len(ex.exceptions)} exception{'s' if num_exceptions > 1 else ''}:"))
 
             for i, inner in enumerate(ex.exceptions, start=1):
                 message_lines.append(self._log_exception(ex=inner, indentation=indentation, level=level + 1, is_inner_exception=True, inner_exception_num=i))
